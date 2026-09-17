@@ -1,37 +1,82 @@
 // ============================================================
-// SBR Budget — Service Worker minimal
-// Met en cache l'app shell pour l'installation PWA. Ne met jamais
-// en cache les appels /api/ ou /auth/ (données bancaires sensibles).
+// SBR Budget — Service Worker
+//
+// Stratégie :
+//  - app shell (HTML/CSS/JS/icônes) en cache, mis à jour en arrière-plan ;
+//  - jamais de mise en cache des routes /api/ et /auth/ (données bancaires) ;
+//  - page hors ligne dédiée quand le réseau est indisponible.
+//
+// Incrémentez CACHE_VERSION à chaque déploiement pour forcer la mise à jour.
 // ============================================================
 
-const CACHE_NAME = 'sbr-budget-shell-v1';
-const APP_SHELL = ['/', '/styles.css', '/app.js', '/manifest.json'];
+const CACHE_VERSION = 'v2';
+const CACHE_NAME = `sbr-budget-shell-${CACHE_VERSION}`;
+const APP_SHELL = [
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/app.js',
+  '/offline.html',
+  '/manifest.webmanifest',
+  '/icon-192.png',
+  '/icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'skip-waiting') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const request = event.request;
+  if (request.method !== 'GET') return;
 
-  // Jamais de cache pour les routes API ou d'authentification.
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Données sensibles : toujours réseau, jamais de cache.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
+
+  // Navigation : réseau d'abord, page hors ligne en secours.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          return response;
+        })
+        .catch(() => caches.match('/index.html').then((cached) => cached || caches.match('/offline.html')))
+    );
     return;
   }
 
+  // Ressources statiques : cache d'abord, révalidation en arrière-plan.
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(request).then((cached) => {
+      const network = fetch(request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => cached);
+      return cached || network;
+    })
   );
 });

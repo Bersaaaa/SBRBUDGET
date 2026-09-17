@@ -1,11 +1,11 @@
 {
   "name": "sbr-budget",
-  "version": "1.0.0",
-  "description": "SBR Budget — application de gestion de budget connectée à Nickel via Open Banking PSD2/AIS (Berlin Group).",
-  "main": "backend/server.js",
+  "version": "3.0.0",
+  "description": "SBR Budget — site web PWA de gestion de budget connecté à Nickel et au Crédit Mutuel (Open Banking DSP2). Déployable sur Vercel.",
+  "main": "server.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "license": "UNLICENSED",
   "private": true,
@@ -16,11 +16,8 @@
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.4.0",
-    "express-session": "^1.18.0",
     "helmet": "^7.1.0",
-    "node-fetch": "^2.7.0",
-    "uuid": "^9.0.1"
+    "node-fetch": "^2.7.0"
   },
   "engines": {
     "node": ">=18.0.0"

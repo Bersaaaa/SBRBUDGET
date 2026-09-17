@@ -10,12 +10,19 @@ const config = require('./config');
 // Client "service role" : utilisé uniquement côté serveur, jamais exposé
 // au frontend. Bypass RLS volontairement pour les opérations système
 // (sync, écriture de tokens), toujours filtré manuellement par user_id.
-const supabaseAdmin = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+// En développement, si Supabase n'est pas encore configuré, on utilise une URL
+// locale factice : le site démarre et la page publique s'affiche, seules les
+// routes touchant réellement à la base renverront une erreur.
+const SUPABASE_URL = config.supabase.url || 'http://localhost:54321';
+const SUPABASE_ANON = config.supabase.anonKey || 'anon-key-non-configuree';
+const SUPABASE_SERVICE = config.supabase.serviceRoleKey || 'service-key-non-configuree';
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
 // Client "anon" : utilisé pour vérifier les sessions utilisateur (Supabase Auth).
-const supabaseAnon = createClient(config.supabase.url, config.supabase.anonKey);
+const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ---------------------------------------------------------------
 // Chiffrement des tokens bancaires (AES) — jamais stockés en clair.
@@ -88,6 +95,29 @@ async function getBankConnection(userId, provider = 'nickel') {
   };
 }
 
+async function listBankConnections(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('bank_connections')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    ...row,
+    access_token: row.access_token_encrypted ? decryptSecret(row.access_token_encrypted) : null,
+    refresh_token: row.refresh_token_encrypted ? decryptSecret(row.refresh_token_encrypted) : null,
+  }));
+}
+
+async function markConnectionSynced(userId, provider) {
+  const { error } = await supabaseAdmin
+    .from('bank_connections')
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+  if (error) throw error;
+}
+
 async function deleteBankConnection(userId, provider = 'nickel') {
   const { error } = await supabaseAdmin
     .from('bank_connections')
@@ -100,12 +130,13 @@ async function deleteBankConnection(userId, provider = 'nickel') {
 // ---------------------------------------------------------------
 // Comptes bancaires
 // ---------------------------------------------------------------
-async function upsertBankAccount(userId, connectionId, account) {
+async function upsertBankAccount(userId, connectionId, account, provider = 'nickel') {
   const { data, error } = await supabaseAdmin
     .from('bank_accounts')
     .upsert({
       user_id: userId,
       connection_id: connectionId,
+      provider,
       provider_account_id: account.providerAccountId,
       name: account.name,
       iban_masked: account.ibanMasked,
@@ -343,6 +374,8 @@ module.exports = {
   decryptSecret,
   upsertBankConnection,
   getBankConnection,
+  listBankConnections,
+  markConnectionSynced,
   deleteBankConnection,
   upsertBankAccount,
   listBankAccounts,

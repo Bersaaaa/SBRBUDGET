@@ -8,6 +8,9 @@ const state = {
   user: null,
   categories: [],
   currentView: 'home',
+  banks: [],          // banques proposées (Nickel, Crédit Mutuel)
+  connections: [],    // banques déjà connectées par l'utilisateur
+  deferredInstall: null, // événement d'installation PWA
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -61,7 +64,11 @@ async function init() {
   bindBudgetsView();
   bindAccountsView();
   bindSettingsView();
-  handleNickelRedirectFlags();
+  bindBankModal();
+  bindInstallPrompt();
+  handleBankRedirectFlags();
+
+  loadBanks();
 
   try {
     const { user } = await api('/api/auth/me');
@@ -72,12 +79,30 @@ async function init() {
   }
 }
 
-function handleNickelRedirectFlags() {
+function handleBankRedirectFlags() {
   const params = new URLSearchParams(window.location.search);
-  if (params.has('nickel_connected') || params.has('nickel_error')) {
+  if (params.has('bank_connected')) {
     window.history.replaceState({}, '', window.location.pathname);
-    window.sessionStorage.setItem('nickel_flag', params.has('nickel_connected') ? 'success' : 'error');
+    window.sessionStorage.setItem('bank_flag', 'success');
+    window.sessionStorage.setItem('bank_flag_provider', params.get('bank_connected') || '');
+  } else if (params.has('bank_error')) {
+    window.history.replaceState({}, '', window.location.pathname);
+    window.sessionStorage.setItem('bank_flag', 'error');
   }
+}
+
+async function loadBanks() {
+  try {
+    const { banks } = await api('/api/banks');
+    state.banks = banks;
+  } catch (_) {
+    state.banks = [];
+  }
+}
+
+function bankLabel(providerId) {
+  const bank = state.banks.find((b) => b.id === providerId);
+  return bank ? bank.label : providerId;
 }
 
 function showAuthScreen() {
@@ -94,18 +119,20 @@ async function enterApp() {
   await refreshAccountsAndBalance();
   await Promise.all([loadRecentTransactions(), loadSubscriptionsHome()]);
 
-  const flag = window.sessionStorage.getItem('nickel_flag');
+  const flag = window.sessionStorage.getItem('bank_flag');
   if (flag) {
-    window.sessionStorage.removeItem('nickel_flag');
-    const banner = $('#banner-nickel-status');
+    const provider = window.sessionStorage.getItem('bank_flag_provider') || '';
+    window.sessionStorage.removeItem('bank_flag');
+    window.sessionStorage.removeItem('bank_flag_provider');
+    const banner = $('#banner-bank-status');
     banner.classList.remove('hidden', 'success', 'error');
     if (flag === 'success') {
       banner.classList.add('success');
-      banner.textContent = 'Compte Nickel connecté. Synchronisation en cours…';
+      banner.textContent = `${bankLabel(provider)} connecté. Synchronisation en cours…`;
       triggerSync(true);
     } else {
       banner.classList.add('error');
-      banner.textContent = "La connexion à Nickel a échoué. Réessayez depuis l'écran Comptes.";
+      banner.textContent = "La connexion bancaire a échoué. Réessayez depuis l'écran Comptes.";
     }
   }
 }
@@ -202,27 +229,75 @@ function bindNavigation() {
 // Accueil
 // ---------------------------------------------------------------
 function bindHomeActions() {
-  $('#btn-connect-nickel').addEventListener('click', connectNickel);
+  $('#btn-connect-bank').addEventListener('click', openBankModal);
   $('#btn-sync-now').addEventListener('click', () => triggerSync());
 }
 
-async function connectNickel() {
+// ---------------------------------------------------------------
+// Choix de la banque (Nickel / Crédit Mutuel)
+// ---------------------------------------------------------------
+function bindBankModal() {
+  $('#btn-add-bank').addEventListener('click', openBankModal);
+  $('#btn-cancel-bank').addEventListener('click', closeBankModal);
+  $('#modal-bank').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-bank') closeBankModal();
+  });
+}
+
+async function openBankModal() {
+  if (!state.banks.length) await loadBanks();
+  const list = $('#bank-choice-list');
+  list.innerHTML = '';
+
+  if (!state.banks.length) {
+    list.innerHTML = '<li class="empty-state">Aucune banque disponible sur ce serveur.</li>';
+  }
+
+  for (const bank of state.banks) {
+    const already = state.connections.some((c) => c.provider === bank.id && c.status === 'active');
+    const li = document.createElement('li');
+    li.className = 'bank-choice' + (already ? ' connected' : '');
+    li.innerHTML = `
+      <div class="bank-choice-main">
+        <span class="bank-choice-name">${escapeHtml(bank.label)}</span>
+        <span class="bank-choice-meta">${already ? 'Déjà connectée' : (bank.live ? 'Connexion DSP2 officielle' : 'Mode démonstration')}</span>
+      </div>
+      <span class="bank-choice-action">${already ? 'Reconnecter' : 'Connecter'}</span>
+    `;
+    li.addEventListener('click', () => connectBank(bank.id));
+    list.appendChild(li);
+  }
+
+  $('#modal-bank').classList.remove('hidden');
+}
+
+function closeBankModal() {
+  $('#modal-bank').classList.add('hidden');
+}
+
+async function connectBank(providerId) {
   try {
-    const { authorizeUrl } = await api('/auth/nickel');
+    const { authorizeUrl } = await api(`/auth/bank/${providerId}/start`);
     window.location.href = authorizeUrl;
   } catch (err) {
     showToast(err.message);
   }
 }
 
-async function triggerSync(silent = false) {
+async function triggerSync(silent = false, provider = null) {
   const btn = $('#btn-sync-now');
   const originalText = btn.textContent;
   btn.textContent = 'Synchronisation…';
   btn.disabled = true;
   try {
-    const result = await api('/api/sync', { method: 'POST' });
-    if (!silent) showToast(`Synchronisé — ${result.transactionsImported} nouvelle(s) transaction(s).`);
+    const result = await api('/api/sync', {
+      method: 'POST',
+      body: JSON.stringify(provider ? { provider } : {}),
+    });
+    if (!silent) {
+      const failed = result.failed && result.failed.length ? ` — échec : ${result.failed.join(', ')}` : '';
+      showToast(`Synchronisé — ${result.transactionsImported} nouvelle(s) transaction(s)${failed}.`);
+    }
     await refreshAccountsAndBalance();
     await Promise.all([loadRecentTransactions(), loadSubscriptionsHome()]);
     if (state.currentView === 'transactions') await loadFullTransactions();
@@ -236,19 +311,21 @@ async function triggerSync(silent = false) {
 
 async function refreshAccountsAndBalance() {
   try {
-    const { accounts, connection } = await api('/api/accounts');
+    const { accounts, connections } = await api('/api/accounts');
+    state.connections = connections || [];
     const total = accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0);
     $('#home-balance').textContent = euros(total);
 
-    const connectBtn = $('#btn-connect-nickel');
+    const active = state.connections.filter((c) => c.status === 'active');
+    $('#home-banks').textContent = active.length
+      ? `Banques connectées : ${active.map((c) => c.label).join(', ')}`
+      : '';
+    $('#settings-banks').textContent = active.length ? active.map((c) => c.label).join(', ') : 'Aucune';
+
+    const connectBtn = $('#btn-connect-bank');
     const syncBtn = $('#btn-sync-now');
-    if (connection && connection.status === 'active') {
-      connectBtn.classList.add('hidden');
-      syncBtn.classList.remove('hidden');
-    } else {
-      connectBtn.classList.remove('hidden');
-      syncBtn.classList.add('hidden');
-    }
+    connectBtn.textContent = active.length ? 'Connecter une autre banque' : 'Connecter ma banque';
+    syncBtn.classList.toggle('hidden', active.length === 0);
 
     const stats = await api('/api/stats');
     const currentMonth = stats.months[stats.months.length - 1];
@@ -564,27 +641,48 @@ function drawCategoryBars(byCategory) {
 // ---------------------------------------------------------------
 function bindAccountsView() {
   $('#btn-sync-accounts').addEventListener('click', () => triggerSync());
-  $('#btn-disconnect-nickel').addEventListener('click', async () => {
-    if (!confirm('Déconnecter votre compte Nickel de SBR Budget ?')) return;
-    try {
-      await api('/api/nickel/disconnect', { method: 'POST' });
-      showToast('Compte Nickel déconnecté.');
-      await loadAccountsView();
-      await refreshAccountsAndBalance();
-    } catch (err) {
-      showToast(err.message);
-    }
-  });
 }
 
 async function loadAccountsView() {
   try {
-    const { accounts, connection } = await api('/api/accounts');
+    const { accounts, connections } = await api('/api/accounts');
+    state.connections = connections || [];
+
+    // Banques connectées, avec synchronisation et déconnexion par banque.
+    const connectionList = $('#connection-list');
+    connectionList.innerHTML = '';
+    if (!state.connections.length) {
+      connectionList.innerHTML = '<li class="empty-state">Aucune banque connectée. Utilisez « Ajouter une banque » pour connecter Nickel ou le Crédit Mutuel.</li>';
+    }
+    for (const c of state.connections) {
+      const li = document.createElement('li');
+      li.className = 'connection-row';
+      const synced = c.lastSyncedAt
+        ? `Synchronisé le ${new Date(c.lastSyncedAt).toLocaleDateString('fr-FR')}`
+        : 'Jamais synchronisé';
+      li.innerHTML = `
+        <div class="tx-main">
+          <span class="tx-label">${escapeHtml(c.label)}</span>
+          <span class="tx-meta">${synced}${c.environment === 'demo' ? ' · démo' : ''}</span>
+        </div>
+        <div class="connection-actions">
+          <button class="link-btn" data-sync="${escapeHtml(c.provider)}">Synchroniser</button>
+          <button class="link-btn danger" data-disconnect="${escapeHtml(c.provider)}">Déconnecter</button>
+        </div>
+      `;
+      connectionList.appendChild(li);
+    }
+
+    $$('[data-sync]', connectionList).forEach((btn) => {
+      btn.addEventListener('click', () => triggerSync(false, btn.dataset.sync));
+    });
+    $$('[data-disconnect]', connectionList).forEach((btn) => {
+      btn.addEventListener('click', () => disconnectBank(btn.dataset.disconnect));
+    });
+
+    // Comptes rapatriés depuis les banques.
     const list = $('#account-list');
     list.innerHTML = '';
-    if (!accounts.length) {
-      list.innerHTML = '<p class="empty-state">Aucun compte connecté. Rendez-vous sur l\'accueil pour connecter votre compte Nickel.</p>';
-    }
     for (const a of accounts) {
       const li = document.createElement('li');
       li.className = 'account-row';
@@ -597,13 +695,27 @@ async function loadAccountsView() {
       `;
       list.appendChild(li);
     }
-    const syncInfo = $('#sync-info');
-    if (connection && connection.lastSyncedAt) {
-      const d = new Date(connection.lastSyncedAt);
-      syncInfo.textContent = `Dernière synchronisation : ${d.toLocaleDateString('fr-FR')} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
-    } else {
-      syncInfo.textContent = 'Aucune synchronisation effectuée pour le moment.';
-    }
+
+    const lastSync = state.connections
+      .map((c) => c.lastSyncedAt)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    $('#sync-info').textContent = lastSync
+      ? `Dernière synchronisation : ${new Date(lastSync).toLocaleDateString('fr-FR')} à ${new Date(lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+      : 'Aucune synchronisation effectuée pour le moment.';
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function disconnectBank(providerId) {
+  if (!confirm(`Déconnecter ${bankLabel(providerId)} de SBR Budget ?`)) return;
+  try {
+    await api(`/api/banks/${providerId}/disconnect`, { method: 'POST' });
+    showToast(`${bankLabel(providerId)} déconnecté.`);
+    await loadAccountsView();
+    await refreshAccountsAndBalance();
   } catch (err) {
     showToast(err.message);
   }
@@ -626,8 +738,33 @@ function bindSettingsView() {
 }
 
 // ---------------------------------------------------------------
-// Enregistrement du service worker (PWA)
+// PWA : installation sur l'écran d'accueil + service worker
 // ---------------------------------------------------------------
+function bindInstallPrompt() {
+  const buttons = ['#btn-install-app', '#btn-install-landing'].map((sel) => $(sel)).filter(Boolean);
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    state.deferredInstall = e;
+    buttons.forEach((b) => b.classList.remove('hidden'));
+  });
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!state.deferredInstall) return;
+      state.deferredInstall.prompt();
+      await state.deferredInstall.userChoice;
+      state.deferredInstall = null;
+      buttons.forEach((b) => b.classList.add('hidden'));
+    });
+  });
+
+  window.addEventListener('appinstalled', () => {
+    state.deferredInstall = null;
+    buttons.forEach((b) => b.classList.add('hidden'));
+  });
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});

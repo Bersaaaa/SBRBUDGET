@@ -1,0 +1,24 @@
+{
+  "id": "/",
+  "name": "SBR Budget",
+  "short_name": "SBR Budget",
+  "description": "Vos comptes Nickel et Crédit Mutuel réunis : dépenses, abonnements et budgets.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "background_color": "#0E1013",
+  "theme_color": "#0E1013",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Transactions", "url": "/?view=transactions" },
+    { "name": "Budgets", "url": "/?view=budgets" }
+  ]
+}

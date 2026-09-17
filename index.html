@@ -3,11 +3,28 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>SBR Budget</title>
-<meta name="description" content="SBR Budget — votre argent, simplement." />
+<title>SBR Budget — votre argent, simplement</title>
+<meta name="description" content="SBR Budget : suivez vos comptes Nickel et Crédit Mutuel, vos dépenses, vos abonnements et vos budgets depuis votre navigateur. Connexion bancaire officielle DSP2." />
 <meta name="theme-color" content="#0E1013" />
-<link rel="manifest" href="/manifest.json" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230E1013%22/><text x=%2250%22 y=%2266%22 font-size=%2254%22 text-anchor=%22middle%22 fill=%22%23D4A94F%22 font-family=%22serif%22>S</text></svg>" />
+<meta name="color-scheme" content="dark" />
+
+<!-- Partage / référencement -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="SBR Budget" />
+<meta property="og:title" content="SBR Budget — votre argent, simplement" />
+<meta property="og:description" content="Vos comptes Nickel et Crédit Mutuel réunis : dépenses, abonnements, budgets. Accessible depuis n'importe quel navigateur." />
+<meta property="og:locale" content="fr_FR" />
+<meta name="twitter:card" content="summary" />
+<link rel="canonical" href="/" />
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="SBR Budget" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -17,53 +34,77 @@
 
 <div id="app" class="app">
 
-  <!-- ============ ÉCRAN : Connexion / Inscription ============ -->
+  <!-- ============ SITE PUBLIC : présentation + connexion ============ -->
   <section id="screen-auth" class="screen screen-auth hidden">
-    <div class="auth-card">
-      <div class="brand">
-        <span class="brand-mark">S</span>
-        <div>
-          <h1 class="brand-name">SBR Budget</h1>
-          <p class="brand-tagline">Votre argent, simplement.</p>
+    <div class="landing">
+
+      <div class="landing-pitch">
+        <div class="brand">
+          <span class="brand-mark">S</span>
+          <div>
+            <h1 class="brand-name">SBR Budget</h1>
+            <p class="brand-tagline">Votre argent, simplement.</p>
+          </div>
         </div>
+
+        <p class="landing-lead">
+          Vos comptes <strong>Nickel</strong> et <strong>Crédit Mutuel</strong> réunis au même
+          endroit : dépenses catégorisées, abonnements détectés, budgets suivis mois par mois.
+          Tout se passe dans votre navigateur, sur ordinateur comme sur mobile.
+        </p>
+
+        <ul class="landing-points">
+          <li>Connexion bancaire officielle DSP2 — vos identifiants restent chez votre banque.</li>
+          <li>Catégorisation automatique et détection des prélèvements récurrents.</li>
+          <li>Budgets mensuels par catégorie et statistiques revenus / dépenses.</li>
+          <li>Installable sur votre écran d'accueil, sans passer par un store.</li>
+        </ul>
+
+        <button class="btn btn-ghost hidden" id="btn-install-landing">Installer SBR Budget</button>
       </div>
 
-      <div class="auth-tabs" role="tablist">
-        <button class="auth-tab active" data-tab="login" role="tab">Se connecter</button>
-        <button class="auth-tab" data-tab="signup" role="tab">Créer un compte</button>
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" data-tab="login" role="tab">Se connecter</button>
+          <button class="auth-tab" data-tab="signup" role="tab">Créer un compte</button>
+        </div>
+
+        <form id="form-login" class="auth-form">
+          <label>Email
+            <input type="email" name="email" required autocomplete="email" />
+          </label>
+          <label>Mot de passe
+            <input type="password" name="password" required autocomplete="current-password" />
+          </label>
+          <p class="form-error" id="login-error"></p>
+          <button type="submit" class="btn btn-primary">Se connecter</button>
+        </form>
+
+        <form id="form-signup" class="auth-form hidden">
+          <label>Nom complet
+            <input type="text" name="fullName" autocomplete="name" />
+          </label>
+          <label>Email
+            <input type="email" name="email" required autocomplete="email" />
+          </label>
+          <label>Mot de passe
+            <input type="password" name="password" required minlength="8" autocomplete="new-password" />
+          </label>
+          <p class="form-error" id="signup-error"></p>
+          <button type="submit" class="btn btn-primary">Créer mon compte</button>
+        </form>
+
+        <p class="auth-legal">
+          SBR Budget ne demande jamais vos identifiants bancaires : la connexion
+          passe par le parcours officiel de votre banque.
+        </p>
       </div>
-
-      <form id="form-login" class="auth-form">
-        <label>Email
-          <input type="email" name="email" required autocomplete="email" />
-        </label>
-        <label>Mot de passe
-          <input type="password" name="password" required autocomplete="current-password" />
-        </label>
-        <p class="form-error" id="login-error"></p>
-        <button type="submit" class="btn btn-primary">Se connecter</button>
-      </form>
-
-      <form id="form-signup" class="auth-form hidden">
-        <label>Nom complet
-          <input type="text" name="fullName" autocomplete="name" />
-        </label>
-        <label>Email
-          <input type="email" name="email" required autocomplete="email" />
-        </label>
-        <label>Mot de passe
-          <input type="password" name="password" required minlength="8" autocomplete="new-password" />
-        </label>
-        <p class="form-error" id="signup-error"></p>
-        <button type="submit" class="btn btn-primary">Créer mon compte</button>
-      </form>
     </div>
   </section>
 
-  <!-- ============ APPLICATION PRINCIPALE ============ -->
+  <!-- ============ APPLICATION ============ -->
   <div id="main" class="main hidden">
 
-    <!-- Sidebar (desktop) -->
     <nav class="sidebar">
       <div class="brand brand-compact">
         <span class="brand-mark">S</span>
@@ -77,6 +118,7 @@
         <li><button class="nav-item" data-view="accounts">Comptes</button></li>
         <li><button class="nav-item" data-view="settings">Paramètres</button></li>
       </ul>
+      <button class="nav-item nav-install hidden" id="btn-install-app">Installer le site</button>
       <button class="nav-item nav-logout" id="btn-logout-desktop">Déconnexion</button>
     </nav>
 
@@ -91,12 +133,13 @@
           </div>
         </header>
 
-        <div id="banner-nickel-status" class="banner hidden"></div>
+        <div id="banner-bank-status" class="banner hidden"></div>
 
         <div class="balance-card">
           <p class="balance-label">Solde disponible</p>
           <p class="balance-amount" id="home-balance">0,00&nbsp;€</p>
-          <button class="btn btn-primary" id="btn-connect-nickel">Connecter mon compte Nickel</button>
+          <p class="balance-sub" id="home-banks"></p>
+          <button class="btn btn-primary" id="btn-connect-bank">Connecter ma banque</button>
           <button class="btn btn-ghost hidden" id="btn-sync-now">Synchroniser maintenant</button>
         </div>
 
@@ -153,7 +196,7 @@
         <p class="empty-state hidden" id="tx-empty">Aucune transaction pour ces filtres.</p>
       </section>
 
-      <!-- ---- Abonnements (vue dédiée, accessible depuis Accueil) ---- -->
+      <!-- ---- Abonnements ---- -->
       <section id="view-subscriptions" class="view">
         <header class="view-header">
           <h1>Abonnements</h1>
@@ -198,12 +241,14 @@
       <section id="view-accounts" class="view">
         <header class="view-header">
           <h1>Comptes</h1>
+          <button class="btn btn-primary btn-small" id="btn-add-bank">Ajouter une banque</button>
         </header>
+
+        <ul class="connection-list" id="connection-list"></ul>
         <ul class="account-list" id="account-list"></ul>
         <p class="sync-info" id="sync-info"></p>
         <div class="btn-row">
-          <button class="btn btn-ghost" id="btn-sync-accounts">Synchroniser</button>
-          <button class="btn btn-danger-ghost" id="btn-disconnect-nickel">Déconnecter</button>
+          <button class="btn btn-ghost" id="btn-sync-accounts">Tout synchroniser</button>
         </div>
       </section>
 
@@ -214,8 +259,7 @@
         </header>
         <ul class="settings-list">
           <li><span>Profil</span><span class="settings-value" id="settings-email"></span></li>
-          <li class="settings-link">Compte bancaire</li>
-          <li class="settings-link">Synchronisation</li>
+          <li><span>Banques connectées</span><span class="settings-value" id="settings-banks">—</span></li>
           <li class="settings-link">Catégories</li>
           <li class="settings-link">Budgets</li>
           <li class="settings-link">Notifications</li>
@@ -230,7 +274,6 @@
 
     </main>
 
-    <!-- Navigation mobile inférieure -->
     <nav class="bottom-nav">
       <button class="bottom-nav-item active" data-view="home">
         <span class="bn-icon">⌂</span><span>Accueil</span>
@@ -248,6 +291,22 @@
         <span class="bn-icon">●</span><span>Profil</span>
       </button>
     </nav>
+  </div>
+
+  <!-- ============ Modale : choix de la banque ============ -->
+  <div id="modal-bank" class="modal hidden">
+    <div class="modal-card">
+      <h2>Connecter une banque</h2>
+      <p class="modal-hint">
+        Vous serez redirigé vers le site officiel de votre banque pour vous
+        authentifier et donner votre consentement. SBR Budget ne voit jamais
+        vos identifiants.
+      </p>
+      <ul class="bank-choice-list" id="bank-choice-list"></ul>
+      <div class="btn-row">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-bank">Annuler</button>
+      </div>
+    </div>
   </div>
 
   <!-- ============ Modale : nouveau budget ============ -->

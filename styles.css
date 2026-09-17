@@ -314,3 +314,115 @@ button { cursor: pointer; }
   .content { padding: 32px 40px 40px; max-width: 760px; }
   .grid-2 { grid-template-columns: 1fr 1fr; }
 }
+
+/* ============================================================
+   Site web — page d'accueil publique, choix de banque, PWA
+   ============================================================ */
+
+/* Page publique : pitch à gauche, formulaire à droite (desktop),
+   empilés sur mobile. */
+.landing {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+  display: grid;
+  gap: 32px;
+  align-items: start;
+}
+.landing-pitch { display: flex; flex-direction: column; gap: 18px; }
+.landing-lead {
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 46ch;
+}
+.landing-lead strong { color: var(--text); font-weight: 600; }
+.landing-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.landing-points li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.landing-points li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+.auth-legal {
+  margin: 18px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+@media (min-width: 900px) {
+  .landing { grid-template-columns: 1.1fr 0.9fr; gap: 56px; padding-top: 64px; }
+}
+
+/* Solde : rappel des banques connectées */
+.balance-sub {
+  margin: 6px 0 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Modale de choix de banque */
+.modal-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.bank-choice-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.bank-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+.bank-choice:hover { border-color: var(--gold); }
+.bank-choice.connected { opacity: 0.75; }
+.bank-choice-main { display: flex; flex-direction: column; gap: 3px; }
+.bank-choice-name { font-size: 15px; font-weight: 600; }
+.bank-choice-meta { font-size: 12px; color: var(--text-muted); }
+.bank-choice-action { font-size: 13px; font-weight: 600; color: var(--gold); white-space: nowrap; }
+
+/* Vue Comptes : banques connectées */
+.connection-list { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.connection-actions { display: flex; gap: 14px; }
+.link-btn.danger { color: var(--red); }
+
+/* Bouton d'installation PWA dans la barre latérale */
+.nav-install { color: var(--gold); }

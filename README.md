@@ -1,233 +1,180 @@
-# SBR Budget
+# SBR Budget — site web PWA (déploiement Vercel)
 
-Application web/mobile de gestion de budget, connectée à **Nickel** via son
-API officielle **Open Banking PSD2/AIS** (standard Berlin Group NextGenPSD2).
+Tous les fichiers sont dans un seul dossier, prêt à être poussé sur un dépôt Git
+et importé dans Vercel. Le site est installable (PWA) et se connecte aux comptes
+bancaires via les API Open Banking DSP2 officielles :
 
-> ⚠️ SBR Budget ne demande **jamais** vos identifiants Nickel. La connexion
-> passe exclusivement par le parcours officiel d'authentification et de
-> consentement hébergé par Nickel lui-même.
+| Banque | Standard | Portail développeur |
+|---|---|---|
+| **Nickel** | Berlin Group NextGenPSD2 | https://psdapistore.nickel.eu/ |
+| **Crédit Mutuel** | STET (France) | https://oauth2.creditmutuel.fr/en/devportal/index.html |
+
+L'utilisateur choisit sa banque au moment de connecter un compte et peut
+connecter les deux : soldes, transactions, abonnements et budgets sont
+consolidés.
+
+> SBR Budget ne demande jamais les identifiants bancaires. L'authentification et
+> le consentement se font sur le site de la banque.
 
 ---
 
-## 1. Architecture
+## 1. Contenu du dossier
+
+**Serveur (fonction Vercel)**
+- `server.js` — API REST, parcours de consentement bancaire, export de l'app Express
+- `config.js` — variables d'environnement, configuration par banque
+- `providers.js` — connexion Nickel (Berlin Group) et Crédit Mutuel (STET)
+- `session.js` — session par cookie signé (compatible serverless)
+- `auth.js` — inscription / connexion Supabase
+- `database.js` — accès Supabase, chiffrement AES des tokens
+- `categorize.js` — catégorisation et détection des abonnements
+
+**Site (statique)**
+- `index.html`, `app.js`, `styles.css`
+- `manifest.webmanifest`, `sw.js`, `offline.html`, `robots.txt`
+- `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png`
+
+**Base de données**
+- `schema.sql` — schéma complet avec Row Level Security
+- `migration-multi-banques.sql` — migration depuis une base mono-banque (Nickel seul)
+
+**Déploiement**
+- `vercel.json` — `server.js` en fonction Node, le reste en statique
+- `.env.example` — liste complète des variables
+
+---
+
+## 2. Déploiement sur Vercel
+
+1. Poussez le dossier sur GitHub / GitLab, puis **Add New → Project** sur Vercel.
+   Framework preset : **Other**. Aucune commande de build n'est nécessaire.
+2. Dans **Settings → Environment Variables**, renseignez au minimum :
 
 ```
-/frontend        → HTML/CSS/JS vanilla, PWA installable, mobile-first
-/backend         → Node.js + Express (API REST)
-/supabase        → Schéma PostgreSQL (schema.sql)
+SUPABASE_URL
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+SESSION_SECRET          # openssl rand -hex 32
+TOKEN_ENCRYPTION_KEY    # openssl rand -hex 32
 ```
 
-- **Frontend** : aucun framework, PWA (manifest + service worker), design
-  premium proche d'une app bancaire.
-- **Backend** : Express, sessions serveur (cookie httpOnly), aucun secret
-  bancaire exposé côté client.
-- **Base de données** : Supabase PostgreSQL avec Row Level Security — chaque
-  utilisateur ne voit que ses propres données.
-- **Connexion bancaire** : Nickel Open Banking PSD2/AIS (Berlin Group).
+3. Déployez. Vérifiez `https://votre-domaine.vercel.app/api/health` : il indique
+   l'URL détectée, l'état de chaque banque (démo ou réel) et si Supabase est
+   configuré.
+
+`APP_BASE_URL` est facultatif : l'URL Vercel est détectée automatiquement.
+Renseignez-le une fois votre domaine définitif branché, car c'est cette URL qui
+sert à construire les redirections bancaires.
+
+### Points d'attention Vercel
+
+- Les sessions sont portées par un **cookie signé** et non par `express-session` :
+  sur du serverless, une session en mémoire serait perdue entre deux requêtes.
+- Les certificats QWAC se passent par variables (`*_QWAC_CERT`, `*_QWAC_KEY`,
+  contenu PEM collé), pas par chemins de fichiers.
+- Après chaque mise à jour du front, incrémentez `CACHE_VERSION` dans `sw.js`
+  pour que les navigateurs récupèrent la nouvelle version.
 
 ---
 
-## 2. Comprendre le mode sandbox intégré
+## 3. Base de données Supabase
 
-Tant que vous n'avez pas renseigné de vrais identifiants Nickel dans `.env`
-(`NICKEL_CLIENT_ID`, `NICKEL_AUTHORIZE_URL`, `NICKEL_TOKEN_URL`), l'application
-fonctionne automatiquement en **sandbox simulée** :
-- un écran de consentement factice (clairement identifié comme tel) remplace
-  l'écran Nickel réel ;
-- des comptes et transactions fictifs sont générés côté serveur
-  (`backend/nickel.js`, fonctions `generateSandboxAccounts` /
-  `generateSandboxTransactions`) ;
-- **aucun appel réseau réel** n'est fait vers Nickel dans ce mode.
-
-Cela vous permet de développer et tester toute l'application (transactions,
-catégories, abonnements, budgets, statistiques) avant même d'avoir un compte
-développeur Nickel.
-
-Dès que les variables Nickel réelles sont renseignées, l'application bascule
-automatiquement sur le vrai parcours PSD2/AIS.
+1. Créez un projet sur https://app.supabase.com.
+2. Éditeur SQL → exécutez `schema.sql`.
+   Si votre base existe déjà en version Nickel seule, exécutez plutôt
+   `migration-multi-banques.sql`.
+3. Récupérez `SUPABASE_URL`, `SUPABASE_ANON_KEY` et `SUPABASE_SERVICE_ROLE_KEY`
+   dans Project Settings → API. La clé service_role reste strictement côté
+   serveur (variable Vercel, jamais dans le front).
 
 ---
 
-## 3. Mise en route — Sandbox de développement
+## 4. Connexion bancaire
 
-### 3.1 Prérequis
-- Node.js ≥ 18
-- Un projet Supabase (gratuit pour démarrer) : https://supabase.com
+### Mode démonstration (par défaut)
 
-### 3.2 Installation
+Tant qu'une banque n'a pas ses identifiants, elle apparaît dans le choix avec la
+mention « Mode démonstration » : un écran de consentement local, clairement
+identifié, remplace celui de la banque, et des comptes / transactions fictifs
+sont générés. Aucun appel réseau vers la banque n'est effectué. Cela permet de
+tester tout le site avant d'avoir un accès développeur.
+
+Le basculement est automatique et banque par banque : dès que `CLIENT_ID`,
+`AUTHORIZE_URL` et `TOKEN_URL` sont renseignés, le parcours officiel prend le
+relais.
+
+### Nickel
+
+1. Inscription TPP sur https://psdapistore.nickel.eu/ et déclaration de
+   l'application.
+2. URL de redirection à déclarer :
+   `https://votre-domaine.vercel.app/auth/bank/nickel/callback`
+3. Variables à renseigner : `NICKEL_CLIENT_ID`, `NICKEL_CLIENT_SECRET`,
+   `NICKEL_API_BASE_URL`, `NICKEL_AUTHORIZE_URL`, `NICKEL_TOKEN_URL`,
+   `NICKEL_AIS_SCOPE`, `NICKEL_REDIRECT_URI`.
+
+### Crédit Mutuel
+
+1. Inscription AISP sur https://oauth2.creditmutuel.fr/en/devportal/index.html
+   et création de l'application.
+2. URL de redirection à déclarer :
+   `https://votre-domaine.vercel.app/auth/bank/creditmutuel/callback`
+3. Variables à renseigner : `CM_CLIENT_ID`, `CM_CLIENT_SECRET`,
+   `CM_API_BASE_URL`, `CM_AUTHORIZE_URL`, `CM_TOKEN_URL`, `CM_AIS_SCOPE`,
+   `CM_REDIRECT_URI`.
+
+Bases API publiées par le Crédit Mutuel : `https://oauth2-apisi.e-i.com/cm/`
+(production) et `https://oauth2-apisi.e-i.com/sandbox/cm/` (sandbox). Les chemins
+exacts sous ces bases, les scopes et les modalités de signature HTTP sont à
+relever dans l'espace développeur : rien n'est deviné dans le code, tout passe
+par les variables `CM_*`.
+
+Le Crédit Mutuel suit STET et non Berlin Group. Les différences (soldes sur un
+endpoint `/balances` dédié, sens de l'opération via `creditDebitIndicator`,
+libellé dans `remittanceInformation`) sont traitées dans `providers.js`.
+
+### Certificats QWAC
+
+En production, la DSP2 impose un certificat qualifié QWAC et du mTLS sur les
+appels, ainsi qu'un agrément AISP auprès de l'ACPR pour opérer un service
+d'agrégation en France. Collez le PEM dans `NICKEL_QWAC_CERT` / `NICKEL_QWAC_KEY`
+et `CM_QWAC_CERT` / `CM_QWAC_KEY` : l'agent HTTPS correspondant est construit
+automatiquement.
+
+---
+
+## 5. Lancer en local
 
 ```bash
 npm install
-cp .env.example .env
+cp .env.example .env    # renseignez Supabase + les deux secrets
+npm start               # http://localhost:3000
 ```
 
-### 3.3 Configurer Supabase
-1. Créez un projet sur https://app.supabase.com.
-2. Dans l'éditeur SQL du projet, exécutez le contenu de `supabase/schema.sql`.
-3. Récupérez dans **Project Settings → API** :
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` (⚠️ à garder strictement secrète, backend uniquement)
-4. Renseignez ces trois valeurs dans `.env`.
+En local, `server.js` sert aussi les fichiers du site (liste blanche : les
+fichiers serveur ne sont jamais exposés). Sur Vercel, le statique est servi par
+la plateforme selon `vercel.json`.
 
-### 3.4 Générer les secrets applicatifs
-
-```bash
-# SESSION_SECRET
-openssl rand -hex 32
-
-# TOKEN_ENCRYPTION_KEY (chiffrement des tokens bancaires au repos)
-openssl rand -hex 32
-```
-Collez les deux valeurs générées dans `.env`.
-
-### 3.5 Lancer l'application
-
-```bash
-npm start
-```
-
-Ouvrez http://localhost:3000. Créez un compte, puis cliquez sur
-« Connecter mon compte Nickel » : vous verrez l'écran de sandbox simulée
-décrit ci-dessus (aucune vraie donnée bancaire n'est utilisée à ce stade).
+Redirections à déclarer pour le développement :
+`http://localhost:3000/auth/bank/nickel/callback` et
+`http://localhost:3000/auth/bank/creditmutuel/callback`.
 
 ---
 
-## 4. Passage à l'intégration réelle Nickel (sandbox officielle puis production)
+## 6. Sécurité et RGPD
 
-### 4.1 Inscription développeur Nickel
-1. Rendez-vous sur le portail officiel : **https://psdapistore.nickel.eu/**
-2. Consultez la documentation : **https://psdapistore.nickel.eu/documentation**,
-   en particulier les sections :
-   - *01 - Manage Consents for Account Information Service*
-   - *04 - Access Account Information Services*
-   - *07 - Perform a Strong Customer Authentication*
-   - *11 - Connect to the sandbox or Berlin Group APIs*
-   - *13 - Build your authorize URL*
-3. Créez votre compte développeur / TPP (Third Party Provider) et déclarez
-   votre application.
-4. Déclarez votre URL de callback :
-   - Développement : `http://localhost:3000/auth/nickel/callback`
-   - Production : `https://votre-domaine.tld/auth/nickel/callback` (HTTPS obligatoire)
+- Aucun secret bancaire côté navigateur ; tokens chiffrés (AES) en base.
+- Cookie de session `httpOnly`, `sameSite=lax`, `secure` en production, signé
+  HMAC-SHA256 ; il ne contient aucun token bancaire.
+- CSP explicite via helmet, CORS restreint, Row Level Security Supabase.
+- Le service worker ne met jamais en cache `/api/` ni `/auth/`.
+- Déconnexion d'une banque : `POST /api/banks/:provider/disconnect`.
+- Suppression du compte et de toutes les données : `POST /api/account/delete`.
 
-### 4.2 Certificats eIDAS / QWAC (production)
-Le standard Berlin Group / PSD2 exige, en production, un **certificat qualifié
-QWAC** (Qualified Website Authentication Certificate) pour identifier votre
-établissement comme TPP agréé (AISP). Nickel précisera dans son espace
-développeur :
-- si un QWAC est exigé pour son API spécifiquement,
-- le format attendu,
-- les éventuelles démarches d'agrément ACPR/AISP nécessaires en France pour
-  opérer un service d'agrégation bancaire.
+## 7. Limitations connues
 
-Renseignez alors `NICKEL_QWAC_CERT_PATH`, `NICKEL_QWAC_KEY_PATH` et
-`NICKEL_TPP_ID` dans `.env`, et configurez votre agent HTTP côté serveur pour
-présenter ce certificat (mTLS) lors des appels à l'API Nickel. Cette partie
-n'est **pas inventée** dans le code : elle est laissée configurable car elle
-dépend d'informations fournies uniquement après inscription développeur.
-
-### 4.3 Renseigner les variables d'environnement
-
-À partir des informations obtenues sur le portail développeur Nickel,
-complétez dans `.env` :
-
-```
-NICKEL_ENV=sandbox               # puis "production" une fois prêt
-NICKEL_CLIENT_ID=...
-NICKEL_CLIENT_SECRET=...
-NICKEL_REDIRECT_URI=...
-NICKEL_API_BASE_URL=...          # base URL Berlin Group Nickel (AIS)
-NICKEL_AUTHORIZE_URL=...         # URL d'autorisation (doc §13)
-NICKEL_TOKEN_URL=...             # endpoint d'échange de token
-NICKEL_AIS_SCOPE=...             # scope AIS exact fourni par Nickel
-```
-
-Dès que `NICKEL_CLIENT_ID`, `NICKEL_AUTHORIZE_URL` et `NICKEL_TOKEN_URL` sont
-renseignés, `backend/nickel.js` bascule automatiquement du mode sandbox
-simulé vers le vrai parcours PSD2/AIS Nickel (voir la constante
-`usingRealNickelCredentials`).
-
-### 4.4 Tester la connexion sandbox officielle Nickel
-1. Démarrez l'application avec `NICKEL_ENV=sandbox` et les identifiants
-   sandbox fournis par Nickel.
-2. Cliquez sur « Connecter mon compte Nickel ».
-3. Vous êtes redirigé vers le véritable portail d'authentification/consentement
-   Nickel (sandbox).
-4. Authentifiez-vous avec les identifiants de test fournis par Nickel.
-5. Donnez votre consentement AIS.
-6. Vous êtes redirigé vers `/auth/nickel/callback`, qui échange le code
-   contre les tokens et récupère vos comptes/transactions de test.
-
-### 4.5 Passer en production
-1. Changez `NICKEL_ENV=production`.
-2. Renseignez les valeurs de production fournies par Nickel (`NICKEL_API_BASE_URL`,
-   `NICKEL_AUTHORIZE_URL`, `NICKEL_TOKEN_URL`, client_id/secret de production).
-3. Déployez le backend derrière **HTTPS** (obligatoire pour PSD2).
-4. Vérifiez que `NICKEL_REDIRECT_URI` correspond exactement à l'URL déclarée
-   auprès de Nickel.
-5. Configurez le certificat QWAC si Nickel l'exige (voir §4.2).
-
----
-
-## 5. Sécurité — ce qui est déjà en place
-
-- Aucun secret bancaire (token, certificat) n'est jamais envoyé au frontend.
-- Tokens Nickel chiffrés (AES) au repos dans Supabase (`TOKEN_ENCRYPTION_KEY`).
-- Sessions serveur en cookie `httpOnly`, `sameSite=lax`, `secure` en production.
-- `helmet` pour les en-têtes de sécurité HTTP.
-- `express-rate-limit` sur les routes sensibles (authentification, synchronisation).
-- CORS restreint aux origines listées dans `CORS_ORIGINS`.
-- Row Level Security Supabase : chaque utilisateur n'accède qu'à ses propres
-  lignes (`bank_connections`, `transactions`, `budgets`, etc.).
-- Contraintes d'unicité sur `(account_id, provider_transaction_id)` pour
-  empêcher l'import en double d'une même transaction.
-- Aucune donnée bancaire sensible n'est écrite dans les logs serveur.
-
-## 6. RGPD
-
-- Suppression du compte et de toutes les données associées :
-  `POST /api/account/delete` (bouton « Supprimer mon compte » dans Paramètres).
-- Déconnexion du compte Nickel à tout moment : `POST /api/nickel/disconnect`
-  (supprime tokens et informations de consentement stockés).
-- Seules les données nécessaires au fonctionnement du service sont conservées.
-
----
-
-## 7. Structure des fichiers livrés
-
-```
-frontend/index.html
-frontend/styles.css
-frontend/app.js
-frontend/manifest.json
-frontend/sw.js
-frontend/icons/icon-192.png
-frontend/icons/icon-512.png
-
-backend/server.js
-backend/nickel.js
-backend/auth.js
-backend/database.js
-backend/categorize.js
-backend/config.js
-
-supabase/schema.sql
-
-package.json
-.env.example
-.gitignore
-README.md
-```
-
-## 8. Limitations connues / à compléter
-
-- Les valeurs exactes `NICKEL_API_BASE_URL`, `NICKEL_AUTHORIZE_URL`,
-  `NICKEL_TOKEN_URL` et le scope AIS précis doivent être confirmées dans votre
-  espace développeur Nickel : elles peuvent différer entre sandbox et
-  production, et ne sont pas publiques avant inscription.
-- La synchronisation automatique périodique (cron) n'est pas implémentée —
-  seule la synchronisation manuelle (`POST /api/sync`) l'est. L'architecture
-  (jetons rafraîchis automatiquement, déduplication) permet d'y brancher un
-  planificateur (ex. `node-cron`) sans changement structurel.
-- Les icônes PWA fournies sont des placeholders simples ; remplacez-les par
-  votre identité visuelle définitive avant publication sur un store.
+- Les URLs d'autorisation/token et scopes exacts des deux banques ne sont
+  publics qu'après inscription développeur : ils restent à renseigner.
+- Synchronisation manuelle uniquement (`POST /api/sync`). Un cron Vercel peut
+  être ajouté sans changement structurel.
+- Les icônes PWA sont génériques : remplacez-les par votre identité visuelle.
