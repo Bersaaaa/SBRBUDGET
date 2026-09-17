@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SBR Budget</title>
+<meta name="description" content="SBR Budget — votre argent, simplement." />
+<meta name="theme-color" content="#0E1013" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230E1013%22/><text x=%2250%22 y=%2266%22 font-size=%2254%22 text-anchor=%22middle%22 fill=%22%23D4A94F%22 font-family=%22serif%22>S</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<div id="app" class="app">
+
+  <!-- ============ ÉCRAN : Connexion / Inscription ============ -->
+  <section id="screen-auth" class="screen screen-auth hidden">
+    <div class="auth-card">
+      <div class="brand">
+        <span class="brand-mark">S</span>
+        <div>
+          <h1 class="brand-name">SBR Budget</h1>
+          <p class="brand-tagline">Votre argent, simplement.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs" role="tablist">
+        <button class="auth-tab active" data-tab="login" role="tab">Se connecter</button>
+        <button class="auth-tab" data-tab="signup" role="tab">Créer un compte</button>
+      </div>
+
+      <form id="form-login" class="auth-form">
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" />
+        </label>
+        <label>Mot de passe
+          <input type="password" name="password" required autocomplete="current-password" />
+        </label>
+        <p class="form-error" id="login-error"></p>
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+      </form>
+
+      <form id="form-signup" class="auth-form hidden">
+        <label>Nom complet
+          <input type="text" name="fullName" autocomplete="name" />
+        </label>
+        <label>Email
+          <input type="email" name="email" required autocomplete="email" />
+        </label>
+        <label>Mot de passe
+          <input type="password" name="password" required minlength="8" autocomplete="new-password" />
+        </label>
+        <p class="form-error" id="signup-error"></p>
+        <button type="submit" class="btn btn-primary">Créer mon compte</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ APPLICATION PRINCIPALE ============ -->
+  <div id="main" class="main hidden">
+
+    <!-- Sidebar (desktop) -->
+    <nav class="sidebar">
+      <div class="brand brand-compact">
+        <span class="brand-mark">S</span>
+        <span class="brand-name">SBR Budget</span>
+      </div>
+      <ul class="nav-list">
+        <li><button class="nav-item active" data-view="home">Accueil</button></li>
+        <li><button class="nav-item" data-view="transactions">Transactions</button></li>
+        <li><button class="nav-item" data-view="budgets">Budgets</button></li>
+        <li><button class="nav-item" data-view="stats">Statistiques</button></li>
+        <li><button class="nav-item" data-view="accounts">Comptes</button></li>
+        <li><button class="nav-item" data-view="settings">Paramètres</button></li>
+      </ul>
+      <button class="nav-item nav-logout" id="btn-logout-desktop">Déconnexion</button>
+    </nav>
+
+    <main class="content">
+
+      <!-- ---- Accueil ---- -->
+      <section id="view-home" class="view active">
+        <header class="view-header">
+          <div>
+            <p class="eyebrow-plain">SBR Budget</p>
+            <h1>Votre argent, simplement.</h1>
+          </div>
+        </header>
+
+        <div id="banner-nickel-status" class="banner hidden"></div>
+
+        <div class="balance-card">
+          <p class="balance-label">Solde disponible</p>
+          <p class="balance-amount" id="home-balance">0,00&nbsp;€</p>
+          <button class="btn btn-primary" id="btn-connect-nickel">Connecter mon compte Nickel</button>
+          <button class="btn btn-ghost hidden" id="btn-sync-now">Synchroniser maintenant</button>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <p class="card-label">Revenus du mois</p>
+            <p class="card-amount positive" id="home-income">0,00&nbsp;€</p>
+          </div>
+          <div class="card">
+            <p class="card-label">Dépenses du mois</p>
+            <p class="card-amount negative" id="home-expense">0,00&nbsp;€</p>
+          </div>
+        </div>
+
+        <div class="section-block">
+          <div class="section-heading">
+            <h2>Dernières transactions</h2>
+            <button class="link-btn" data-view-link="transactions">Tout voir</button>
+          </div>
+          <ul class="tx-list" id="home-recent-tx"></ul>
+        </div>
+
+        <div class="section-block">
+          <div class="section-heading">
+            <h2>Abonnements</h2>
+            <button class="link-btn" data-view-link="subscriptions">Tout voir</button>
+          </div>
+          <ul class="sub-list" id="home-subs"></ul>
+        </div>
+      </section>
+
+      <!-- ---- Transactions ---- -->
+      <section id="view-transactions" class="view">
+        <header class="view-header">
+          <h1>Transactions</h1>
+        </header>
+
+        <div class="filters">
+          <input type="search" id="tx-search" placeholder="Rechercher une transaction" />
+          <div class="filter-row">
+            <select id="tx-filter-type">
+              <option value="">Tout</option>
+              <option value="income">Revenus</option>
+              <option value="expense">Dépenses</option>
+            </select>
+            <select id="tx-filter-category">
+              <option value="">Toutes catégories</option>
+            </select>
+            <input type="month" id="tx-filter-period" />
+          </div>
+        </div>
+
+        <ul class="tx-list tx-list-full" id="tx-full-list"></ul>
+        <p class="empty-state hidden" id="tx-empty">Aucune transaction pour ces filtres.</p>
+      </section>
+
+      <!-- ---- Abonnements (vue dédiée, accessible depuis Accueil) ---- -->
+      <section id="view-subscriptions" class="view">
+        <header class="view-header">
+          <h1>Abonnements</h1>
+        </header>
+        <ul class="sub-list sub-list-full" id="subs-full-list"></ul>
+        <p class="empty-state hidden" id="subs-empty">Aucun abonnement détecté pour le moment.</p>
+      </section>
+
+      <!-- ---- Budgets ---- -->
+      <section id="view-budgets" class="view">
+        <header class="view-header">
+          <h1>Budgets</h1>
+          <button class="btn btn-primary btn-small" id="btn-new-budget">Nouveau budget</button>
+        </header>
+        <ul class="budget-list" id="budget-list"></ul>
+        <p class="empty-state hidden" id="budget-empty">Aucun budget créé pour ce mois.</p>
+      </section>
+
+      <!-- ---- Statistiques ---- -->
+      <section id="view-stats" class="view">
+        <header class="view-header">
+          <h1>Statistiques</h1>
+        </header>
+
+        <div class="card">
+          <p class="card-label">Taux d'épargne (mois en cours)</p>
+          <p class="card-amount" id="stats-savings-rate">—</p>
+        </div>
+
+        <div class="section-block">
+          <h2>Revenus vs dépenses</h2>
+          <canvas id="chart-income-expense" width="600" height="260"></canvas>
+        </div>
+
+        <div class="section-block">
+          <h2>Dépenses par catégorie</h2>
+          <div id="chart-by-category" class="bar-chart"></div>
+        </div>
+      </section>
+
+      <!-- ---- Comptes ---- -->
+      <section id="view-accounts" class="view">
+        <header class="view-header">
+          <h1>Comptes</h1>
+        </header>
+        <ul class="account-list" id="account-list"></ul>
+        <p class="sync-info" id="sync-info"></p>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btn-sync-accounts">Synchroniser</button>
+          <button class="btn btn-danger-ghost" id="btn-disconnect-nickel">Déconnecter</button>
+        </div>
+      </section>
+
+      <!-- ---- Paramètres ---- -->
+      <section id="view-settings" class="view">
+        <header class="view-header">
+          <h1>Paramètres</h1>
+        </header>
+        <ul class="settings-list">
+          <li><span>Profil</span><span class="settings-value" id="settings-email"></span></li>
+          <li class="settings-link">Compte bancaire</li>
+          <li class="settings-link">Synchronisation</li>
+          <li class="settings-link">Catégories</li>
+          <li class="settings-link">Budgets</li>
+          <li class="settings-link">Notifications</li>
+          <li class="settings-link">Sécurité</li>
+          <li class="settings-link">Confidentialité</li>
+        </ul>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btn-logout-mobile">Déconnexion</button>
+          <button class="btn btn-danger-ghost" id="btn-delete-account">Supprimer mon compte</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Navigation mobile inférieure -->
+    <nav class="bottom-nav">
+      <button class="bottom-nav-item active" data-view="home">
+        <span class="bn-icon">⌂</span><span>Accueil</span>
+      </button>
+      <button class="bottom-nav-item" data-view="transactions">
+        <span class="bn-icon">≡</span><span>Transactions</span>
+      </button>
+      <button class="bottom-nav-item" data-view="budgets">
+        <span class="bn-icon">◔</span><span>Budgets</span>
+      </button>
+      <button class="bottom-nav-item" data-view="stats">
+        <span class="bn-icon">△</span><span>Stats</span>
+      </button>
+      <button class="bottom-nav-item" data-view="settings">
+        <span class="bn-icon">●</span><span>Profil</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ============ Modale : nouveau budget ============ -->
+  <div id="modal-budget" class="modal hidden">
+    <div class="modal-card">
+      <h2>Nouveau budget</h2>
+      <form id="form-budget">
+        <label>Catégorie
+          <select name="category" id="budget-category-select"></select>
+        </label>
+        <label>Montant mensuel (€)
+          <input type="number" name="amount" min="1" step="1" required />
+        </label>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-budget">Annuler</button>
+          <button type="submit" class="btn btn-primary">Créer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
