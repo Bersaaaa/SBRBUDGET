@@ -242,6 +242,11 @@ function bindBankModal() {
   $('#modal-bank').addEventListener('click', (e) => {
     if (e.target.id === 'modal-bank') closeBankModal();
   });
+  $('#btn-cancel-bank-direct').addEventListener('click', closeBankDirectModal);
+  $('#modal-bank-direct').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-bank-direct') closeBankDirectModal();
+  });
+  $('#form-bank-direct').addEventListener('submit', onSubmitBankDirect);
 }
 
 async function openBankModal() {
@@ -260,7 +265,7 @@ async function openBankModal() {
     li.innerHTML = `
       <div class="bank-choice-main">
         <span class="bank-choice-name">${escapeHtml(bank.label)}</span>
-        <span class="bank-choice-meta">${already ? 'Déjà connectée' : (bank.live ? 'Connexion DSP2 officielle' : 'Mode démonstration')}</span>
+        <span class="bank-choice-meta">${already ? 'Déjà connectée' : bankModeLabel(bank.connectionMode)}</span>
       </div>
       <span class="bank-choice-action">${already ? 'Reconnecter' : 'Connecter'}</span>
     `;
@@ -275,12 +280,81 @@ function closeBankModal() {
   $('#modal-bank').classList.add('hidden');
 }
 
+function bankModeLabel(mode) {
+  if (mode === 'oauth') return 'Connexion DSP2 officielle';
+  if (mode === 'direct') return 'Connexion directe (identifiant + mot de passe)';
+  return 'Mode démonstration';
+}
+
+let bankDirectContext = { providerId: null, awaitingOtp: false };
+
 async function connectBank(providerId) {
+  const bank = state.banks.find((b) => b.id === providerId);
+  if (bank && bank.connectionMode === 'direct') {
+    closeBankModal();
+    openBankDirectModal(providerId, bank.label);
+    return;
+  }
   try {
     const { authorizeUrl } = await api(`/auth/bank/${providerId}/start`);
     window.location.href = authorizeUrl;
   } catch (err) {
     showToast(err.message);
+  }
+}
+
+function openBankDirectModal(providerId, label) {
+  bankDirectContext = { providerId, awaitingOtp: false };
+  $('#modal-bank-direct-title').textContent = `Connexion directe — ${label}`;
+  $('#form-bank-direct').reset();
+  $('#bank-direct-otp-row').classList.add('hidden');
+  $('#bank-direct-error').classList.add('hidden');
+  $('#btn-submit-bank-direct').textContent = 'Se connecter';
+  $('#modal-bank-direct').classList.remove('hidden');
+}
+
+function closeBankDirectModal() {
+  $('#modal-bank-direct').classList.add('hidden');
+  bankDirectContext = { providerId: null, awaitingOtp: false };
+}
+
+async function onSubmitBankDirect(e) {
+  e.preventDefault();
+  const { providerId, awaitingOtp } = bankDirectContext;
+  const errorEl = $('#bank-direct-error');
+  const submitBtn = $('#btn-submit-bank-direct');
+  errorEl.classList.add('hidden');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Connexion…';
+
+  try {
+    if (!awaitingOtp) {
+      const login = $('#bank-direct-login').value.trim();
+      const secret = $('#bank-direct-secret').value;
+      const result = await api(`/api/banks/${providerId}/connect-direct`, {
+        method: 'POST',
+        body: JSON.stringify({ login, secret }),
+      });
+      if (result.otpRequired) {
+        bankDirectContext.awaitingOtp = true;
+        $('#bank-direct-otp-row').classList.remove('hidden');
+        $('#btn-submit-bank-direct').textContent = 'Valider le code';
+        submitBtn.disabled = false;
+        return;
+      }
+    } else {
+      const code = $('#bank-direct-otp').value.trim();
+      await api(`/api/banks/${providerId}/otp`, { method: 'POST', body: JSON.stringify({ code }) });
+    }
+    closeBankDirectModal();
+    showToast('Banque connectée. Synchronisation en cours…');
+    await triggerSync(false, providerId);
+  } catch (err) {
+    errorEl.textContent = err.message || 'Connexion impossible.';
+    errorEl.classList.remove('hidden');
+  } finally {
+    submitBtn.disabled = false;
+    if (!bankDirectContext.awaitingOtp) submitBtn.textContent = 'Se connecter';
   }
 }
 

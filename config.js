@@ -87,12 +87,36 @@ const config = {
 };
 
 /**
- * Une banque passe en mode réel dès que client_id + authorize_url + token_url
- * sont renseignés. Sinon, mode démonstration local (aucun appel réseau).
+ * Une banque passe en mode réel (DSP2 officiel) dès que client_id +
+ * authorize_url + token_url sont renseignés.
  */
 config.isLive = function isLive(providerId) {
   const p = config.providers[providerId];
   return Boolean(p && p.clientId && p.authorizeUrl && p.tokenUrl);
+};
+
+/**
+ * Mode de connexion utilisé pour une banque donnée :
+ * - "oauth"  : parcours DSP2 officiel (si client_id/authorize/token fournis)
+ * - "direct" : identifiant + mot de passe, via scraper.js (par défaut,
+ *              usage personnel — voir README section "Connexion directe")
+ * - "demo"   : aucune des deux, données fictives (fallback de sécurité)
+ *
+ * DIRECT_LOGIN_PROVIDERS permet de forcer explicitement le mode direct
+ * pour certaines banques même si elles ont par ailleurs des identifiants
+ * DSP2 (ex: "nickel,creditmutuel"). Par défaut, le mode direct est utilisé
+ * dès qu'une banque n'est pas en mode DSP2 officiel.
+ */
+const forcedDirectProviders = (process.env.DIRECT_LOGIN_PROVIDERS || 'nickel,creditmutuel')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+config.connectionMode = function connectionMode(providerId) {
+  if (config.isLive(providerId) && !forcedDirectProviders.includes(providerId)) return 'oauth';
+  const scraper = require('./scraper');
+  if (scraper.isDirectModeAvailable(providerId)) return 'direct';
+  return 'demo';
 };
 
 if (config.isProduction) {

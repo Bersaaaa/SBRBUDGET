@@ -23,10 +23,11 @@ consolidés.
 **Serveur (fonction Vercel)**
 - `server.js` — API REST, parcours de consentement bancaire, export de l'app Express
 - `config.js` — variables d'environnement, configuration par banque
-- `providers.js` — connexion Nickel (Berlin Group) et Crédit Mutuel (STET)
+- `providers.js` — connexion Nickel (Berlin Group) et Crédit Mutuel (STET), mode DSP2 officiel
+- `scraper.js` — connexion directe (identifiant + mot de passe), voir section 7
 - `session.js` — session par cookie signé (compatible serverless)
 - `auth.js` — inscription / connexion Supabase
-- `database.js` — accès Supabase, chiffrement AES des tokens
+- `database.js` — accès Supabase, chiffrement AES des tokens et des identifiants
 - `categorize.js` — catégorisation et détection des abonnements
 
 **Site (statique)**
@@ -37,6 +38,7 @@ consolidés.
 **Base de données**
 - `schema.sql` — schéma complet avec Row Level Security
 - `migration-multi-banques.sql` — migration depuis une base mono-banque (Nickel seul)
+- `migration-connexion-directe.sql` — migration pour la connexion directe (section 7)
 
 **Déploiement**
 - `vercel.json` — `server.js` en fonction Node, le reste en statique
@@ -103,6 +105,54 @@ Le basculement est automatique et banque par banque : dès que `CLIENT_ID`,
 `AUTHORIZE_URL` et `TOKEN_URL` sont renseignés, le parcours officiel prend le
 relais.
 
+### Connexion directe (sans API officielle — usage personnel)
+
+Par défaut (`DIRECT_LOGIN_PROVIDERS=nickel,creditmutuel`), Nickel et le
+Crédit Mutuel utilisent une **connexion directe** : identifiant + mot de
+passe, comme dans un navigateur, plutôt que le parcours DSP2 officiel
+(inutile pour un usage strictement personnel — pas d'inscription TPP, pas de
+certificat QWAC, pas d'agrément ACPR).
+
+**Ce que ça fait concrètement** (`scraper.js`) : un navigateur Chromium sans
+interface (Playwright) se connecte à votre espace client avec vos
+identifiants, lit les soldes/opérations affichés à l'écran, puis ferme la
+session. Les identifiants et les cookies de session sont chiffrés (AES) en
+base, jamais en clair, jamais envoyés au navigateur.
+
+**À savoir avant d'activer ce mode :**
+- **CERTAIN** : ça sort du cadre prévu par les CGU des banques (accès
+  automatisé non explicitement autorisé). Usage personnel, à vos risques.
+- **À VÉRIFIER** : les sélecteurs CSS dans `scraper.js` (`SITES.nickel` /
+  `SITES.creditmutuel`) sont une base de départ, pas une intégration
+  testée sur un vrai compte. Après un premier essai de connexion, si
+  ça échoue :
+  1. Ouvrez le site de la banque dans Chrome, F12 → onglet *Elements*.
+  2. Repérez les attributs `name`/`id` des champs identifiant et mot de
+     passe sur le formulaire de connexion réel.
+  3. Mettez-les à jour dans `loginSelectors` / `secretSelectors` de
+     `scraper.js` (en tête de liste, pour qu'ils soient essayés en premier).
+  4. Faites la même chose pour la page « mes comptes » si l'extraction des
+     soldes ne remonte rien d'exploitable (`rawAccountTexts` dans les logs
+     de synchronisation, table `sync_logs`) — le mapping précis vers des
+     transactions catégorisées est à finaliser une fois la structure réelle
+     de la page connue.
+- Si la banque impose un code reçu par SMS (authentification forte), un
+  champ apparaît dans l'app pour le saisir. Si elle exige une validation
+  uniquement via l'application mobile de la banque (push notification),
+  aucun script ne peut la remplacer : il faudra resynchroniser
+  manuellement ce jour-là.
+- **Ne fonctionne pas sur Vercel serverless** : la session du navigateur
+  doit rester ouverte en mémoire entre l'étape mot de passe et l'étape code
+  SMS, ce qu'une fonction serverless (qui se termine après chaque requête)
+  ne permet pas. Ce mode doit tourner sur un process Node qui reste allumé
+  (votre ordinateur avec `npm start`, une box domestique, un petit VPS ou
+  un Raspberry Pi). Le mode DSP2 officiel, lui, reste compatible Vercel.
+
+Pour revenir au mode démonstration ou forcer le mode DSP2 dès que vous avez
+de vrais identifiants, ajustez `DIRECT_LOGIN_PROVIDERS` (liste vide pour
+tout désactiver) et/ou renseignez les variables `NICKEL_*` / `CM_*`
+ci-dessous.
+
 ### Nickel
 
 1. Inscription TPP sur https://psdapistore.nickel.eu/ et déclaration de
@@ -146,10 +196,14 @@ automatiquement.
 ## 5. Lancer en local
 
 ```bash
-npm install
+npm install              # installe aussi Chromium pour la connexion directe (postinstall)
 cp .env.example .env    # renseignez Supabase + les deux secrets
 npm start               # http://localhost:3000
 ```
+
+Pour un usage 100% personnel avec la connexion directe (section 4), lancer en
+local (ou sur un petit serveur toujours allumé) est le fonctionnement normal,
+pas juste une étape de développement — voir les limites Vercel ci-dessus.
 
 En local, `server.js` sert aussi les fichiers du site (liste blanche : les
 fichiers serveur ne sont jamais exposés). Sur Vercel, le statique est servi par

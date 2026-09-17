@@ -16,6 +16,7 @@ const crypto = require('crypto');
 
 const config = require('./config');
 const banks = require('./providers');
+const scraper = require('./scraper');
 const db = require('./database');
 const { sessionMiddleware, requireAuth } = require('./session');
 const { signUp, signIn } = require('./auth');
@@ -97,7 +98,90 @@ app.get('/api/auth/me', (req, res) => {
 // Connexion bancaire : Nickel ou Crédit Mutuel
 // ---------------------------------------------------------------
 app.get('/api/banks', (_req, res) => {
-  res.json({ banks: banks.listProviders() });
+  res.json({
+    banks: banks.listProviders().map((b) => ({ ...b, connectionMode: config.connectionMode(b.id) })),
+  });
+});
+
+// ---------------------------------------------------------------
+// Connexion directe (identifiant + mot de passe, sans API officielle)
+// ---------------------------------------------------------------
+app.post('/api/banks/:provider/connect-direct', requireAuth, async (req, res) => {
+  const provider = String(req.params.provider || '').toLowerCase();
+  try {
+    if (config.connectionMode(provider) !== 'direct') {
+      return res.status(400).json({ error: 'not_direct_mode', message: 'Connexion directe non disponible pour cette banque.' });
+    }
+    const { login, secret } = req.body || {};
+    if (!login || !secret) {
+      return res.status(400).json({ error: 'invalid_input', message: 'Identifiant et mot de passe requis.' });
+    }
+
+    const result = await scraper.attemptLogin(provider, { login, secret });
+
+    if (result.status === 'otp_required') {
+      // Seul l'attemptId (opaque) part dans le cookie de session : le
+      // navigateur ouvert et les identifiants restent en mémoire serveur
+      // (scraper.js), jamais dans le cookie envoyé au client.
+      res.saveSession({
+        userId: req.userId,
+        userEmail: req.userEmail,
+        pendingDirectAuth: { provider, attemptId: result.attemptId },
+      });
+      return res.json({ otpRequired: true });
+    }
+
+    await db.upsertBankConnection(req.userId, {
+      provider,
+      status: 'active',
+      connectionType: 'direct',
+      login,
+      secret,
+      sessionState: result.sessionState,
+      environment: 'direct',
+      consentStatus: 'valid',
+    });
+    res.json({ ok: true, connected: true });
+  } catch (err) {
+    console.error(`Connexion directe ${provider} :`, err.message);
+    res.status(502).json({
+      error: 'direct_login_failed',
+      message: `Échec de connexion à ${banks.labelOf(provider)}. Identifiants incorrects, ou le site a changé et les sélecteurs de scraper.js doivent être ajustés (voir README).`,
+    });
+  }
+});
+
+app.post('/api/banks/:provider/otp', requireAuth, async (req, res) => {
+  const provider = String(req.params.provider || '').toLowerCase();
+  try {
+    const pending = req.session.pendingDirectAuth;
+    if (!pending || pending.provider !== provider) {
+      return res.status(400).json({ error: 'no_pending_auth', message: 'Aucune connexion en attente de code SMS.' });
+    }
+    const { code } = req.body || {};
+    if (!code) return res.status(400).json({ error: 'invalid_input', message: 'Code requis.' });
+
+    const result = await scraper.submitOtp(pending.attemptId, code);
+    if (result.status !== 'connected') {
+      return res.status(502).json({ error: 'otp_failed', message: 'Code incorrect ou expiré.' });
+    }
+
+    await db.upsertBankConnection(req.userId, {
+      provider,
+      status: 'active',
+      connectionType: 'direct',
+      login: result.login,
+      secret: result.secret,
+      sessionState: result.sessionState,
+      environment: 'direct',
+      consentStatus: 'valid',
+    });
+    res.saveSession({ userId: req.userId, userEmail: req.userEmail });
+    res.json({ ok: true, connected: true });
+  } catch (err) {
+    console.error(`Validation code SMS ${provider} :`, err.message);
+    res.status(502).json({ error: 'otp_failed', message: err.message });
+  }
 });
 
 // Étape 1 — l'utilisateur choisit sa banque, on prépare state + PKCE.
@@ -200,6 +284,40 @@ app.post('/api/banks/:provider/disconnect', requireAuth, async (req, res) => {
 async function syncConnection(userId, connection) {
   const provider = connection.provider;
   const syncLog = await db.createSyncLog(userId, connection.id);
+
+  if (connection.connection_type === 'direct') {
+    try {
+      const full = await db.getBankConnection(userId, provider); // récupère session_state déchiffré
+      let scrapeResult = await scraper.scrapeAccounts(provider, full.session_state);
+
+      if (scrapeResult.status === 'reauth_required') {
+        // La session a expiré : on retente une connexion complète avec
+        // l'identifiant/mot de passe sauvegardés.
+        const loginResult = await scraper.attemptLogin(provider, { login: full.login, secret: full.secret });
+        if (loginResult.status === 'otp_required') {
+          throw new Error('Reconnexion nécessaire : un code SMS est demandé, reconnecte cette banque manuellement.');
+        }
+        await db.upsertBankConnection(userId, { provider, sessionState: loginResult.sessionState });
+        scrapeResult = await scraper.scrapeAccounts(provider, loginResult.sessionState);
+      }
+
+      // ⚠️ À COMPLÉTER : rawAccountTexts est une extraction générique
+      // (voir scraper.js). Le mapping précis vers comptes/opérations
+      // dépend de la structure réelle de l'espace client de la banque et
+      // doit être ajusté une fois les sélecteurs corrigés (voir README).
+      await db.upsertBankConnection(userId, { provider, sessionState: scrapeResult.sessionState });
+      await db.markConnectionSynced(userId, provider);
+      await db.finishSyncLog(syncLog.id, {
+        status: 'success',
+        transactionsImported: 0,
+        message: `Comptes lus (bruts, non catégorisés) : ${(scrapeResult.rawAccountTexts || []).join(' | ')}`,
+      });
+      return { imported: 0, transactions: [] };
+    } catch (err) {
+      await db.finishSyncLog(syncLog.id, { status: 'error', message: err.message }).catch(() => {});
+      throw err;
+    }
+  }
 
   try {
     let accessToken = connection.access_token;

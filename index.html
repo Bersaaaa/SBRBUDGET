@@ -297,15 +297,38 @@
   <div id="modal-bank" class="modal hidden">
     <div class="modal-card">
       <h2>Connecter une banque</h2>
-      <p class="modal-hint">
-        Vous serez redirigé vers le site officiel de votre banque pour vous
-        authentifier et donner votre consentement. SBR Budget ne voit jamais
-        vos identifiants.
+      <p class="modal-hint" id="modal-bank-hint">
+        Connexion officielle DSP2 si configurée, sinon connexion directe
+        avec votre identifiant et votre mot de passe (usage personnel).
       </p>
       <ul class="bank-choice-list" id="bank-choice-list"></ul>
       <div class="btn-row">
         <button type="button" class="btn btn-ghost" id="btn-cancel-bank">Annuler</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ Modale : connexion directe (identifiant + mot de passe) ============ -->
+  <div id="modal-bank-direct" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="modal-bank-direct-title">Connexion directe</h2>
+      <p class="modal-hint">
+        Identifiant et mot de passe utilisés uniquement pour se connecter à
+        votre espace client, comme si vous le faisiez vous-même. Stockés
+        chiffrés, jamais en clair.
+      </p>
+      <form id="form-bank-direct">
+        <label>Identifiant<input type="text" id="bank-direct-login" autocomplete="off" required /></label>
+        <label>Mot de passe / code d'accès<input type="password" id="bank-direct-secret" required /></label>
+        <div id="bank-direct-otp-row" class="hidden">
+          <label>Code reçu par SMS<input type="text" id="bank-direct-otp" inputmode="numeric" /></label>
+        </div>
+        <p class="form-error hidden" id="bank-direct-error"></p>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-bank-direct">Annuler</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-bank-direct">Se connecter</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -56,6 +56,10 @@ async function upsertBankConnection(userId, {
   consentId,
   consentStatus,
   environment,
+  connectionType, // 'oauth' | 'direct' | 'demo'
+  login,          // identifiant, connexion directe uniquement
+  secret,         // mot de passe / code d'accès, connexion directe uniquement
+  sessionState,   // cookies du navigateur (objet Playwright storageState), connexion directe uniquement
 }) {
   const payload = {
     user_id: userId,
@@ -69,6 +73,12 @@ async function upsertBankConnection(userId, {
   if (accessToken !== undefined) payload.access_token_encrypted = encryptSecret(accessToken);
   if (refreshToken !== undefined) payload.refresh_token_encrypted = encryptSecret(refreshToken);
   if (expiresAt !== undefined) payload.expires_at = expiresAt;
+  if (connectionType !== undefined) payload.connection_type = connectionType;
+  if (login !== undefined) payload.login_encrypted = encryptSecret(login);
+  if (secret !== undefined) payload.secret_encrypted = encryptSecret(secret);
+  if (sessionState !== undefined) {
+    payload.session_state_encrypted = sessionState ? encryptSecret(JSON.stringify(sessionState)) : null;
+  }
 
   const { data, error } = await supabaseAdmin
     .from('bank_connections')
@@ -92,6 +102,9 @@ async function getBankConnection(userId, provider = 'nickel') {
     ...data,
     access_token: data.access_token_encrypted ? decryptSecret(data.access_token_encrypted) : null,
     refresh_token: data.refresh_token_encrypted ? decryptSecret(data.refresh_token_encrypted) : null,
+    login: data.login_encrypted ? decryptSecret(data.login_encrypted) : null,
+    secret: data.secret_encrypted ? decryptSecret(data.secret_encrypted) : null,
+    session_state: data.session_state_encrypted ? JSON.parse(decryptSecret(data.session_state_encrypted)) : null,
   };
 }
 
@@ -106,6 +119,9 @@ async function listBankConnections(userId) {
     ...row,
     access_token: row.access_token_encrypted ? decryptSecret(row.access_token_encrypted) : null,
     refresh_token: row.refresh_token_encrypted ? decryptSecret(row.refresh_token_encrypted) : null,
+    login: row.login_encrypted ? decryptSecret(row.login_encrypted) : null,
+    // le secret n'est jamais renvoyé dans les listes, seulement via getBankConnection
+    session_state: null,
   }));
 }
 
